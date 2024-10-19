@@ -5,13 +5,15 @@
         <h1>Dashboard</h1>
         <p>All information hydroponic management</p>
       </div>
-      <div class="w-full h-[75%] bg-neutral-100">
+      <div class="w-full h-[400px] bg-neutral-200">
         dftherh
       </div>
     </header>
 
-    <main>
-      <div class="">Tempurature in your location</div>
+    <main class="grid gap-2">
+      <div class="flex items-center gap-4">
+        <div v-for='(item, index) in 4' :key=index class="w-full h-[260px] bg-neutral-200"></div>
+      </div>
       <section>
         Chart
       </section>
