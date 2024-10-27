@@ -1,31 +1,4 @@
-<!-- <template>
-  <div class="grid gap-8 h-screen w-full">
-    <header class="">
-      <div class="grow">
-        <h1>Dashboard</h1>
-        <p>All information hydroponic management</p>
-      </div>
-      <div class="w-full h-[400px] bg-neutral-200">
-        dftherh
-      </div>
-    </header>
-
-    <main class="grid gap-2">
-      <div class="flex items-center gap-4">
-        <div v-for='(item, index) in 4' :key=index class="w-full h-[260px] bg-neutral-200"></div>
-      </div>
-      <section>
-        Chart
-      </section>
-    </main>
-
-    <footer>
-      copyright
-    </footer>
-  </div>
-</template>
-
-<script setup lang="ts">
+<!-- <script setup lang="ts">
 import { definePageMeta } from "~/node_modules/nuxt/dist/pages/runtime/composables";
 
 definePageMeta({
@@ -133,8 +106,8 @@ onMounted(() => {
              class="bg-white p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-2">
-              <Cpu class="w-5 h-5 text-gray-600" />
-              <h3 class="font-semibold text-gray-800">Device {{ index + 1 }}</h3>
+              <component :is="device.icon" class="w-5 h-5 text-gray-600" />
+              <h3 class="font-semibold text-gray-800">{{ device.name }}</h3>
             </div>
             <span :class="`px-2 py-1 text-sm rounded-full flex items-center gap-1 ${
               device.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -158,18 +131,63 @@ onMounted(() => {
               </span>
               <span class="text-gray-800">{{ device.lastUpdate }}</span>
             </div>
-            <div class="pt-2 mt-2 border-t">
-              <button
-                @click="toggleDevice(index)"
-                :class="`w-full py-2 rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                  device.isActive 
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200' 
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`"
-              >
-                <Power class="w-4 h-4" />
-                {{ device.isActive ? 'Turn Off' : 'Turn On' }}
-              </button>
+            <!-- Timer Display -->
+            <div v-if="device.timer.active" class="flex justify-between text-sm">
+              <span class="text-gray-600 flex items-center gap-1">
+                <Timer class="w-4 h-4" />
+                Time Remaining
+              </span>
+              <span class="text-gray-800">{{ formatTime(device.timer.remaining) }}</span>
+            </div>
+            <div class="pt-2 mt-2 border-t space-y-2">
+              <!-- Timer Controls -->
+              <div v-if="device.showTimerModal" class="bg-gray-50 p-3 rounded-lg mb-2">
+                <div class="flex items-center gap-2 mb-2">
+                  <input 
+                    type="number" 
+                    v-model="device.timer.duration"
+                    min="1"
+                    max="120"
+                    class="w-20 px-2 py-1 border rounded"
+                  />
+                  <span class="text-sm text-gray-600">minutes</span>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    @click="startTimer(index)"
+                    class="flex-1 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    Start
+                  </button>
+                  <button
+                    @click="device.showTimerModal = false"
+                    class="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              <!-- Device Controls -->
+              <div class="flex gap-2">
+                <button
+                  @click="toggleDevice(index)"
+                  :class="`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                    device.isActive 
+                      ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                      : 'bg-green-100 text-green-700 hover:bg-green-200'
+                  }`"
+                >
+                  <Power class="w-4 h-4" />
+                  {{ device.isActive ? 'Turn Off' : 'Turn On' }}
+                </button>
+                <button
+                  @click="showTimerModal(index)"
+                  class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  :disabled="device.timer.active"
+                >
+                  <Timer class="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -195,8 +213,7 @@ onMounted(() => {
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { definePageMeta } from '#imports'
-import { useRouter } from 'vue-router'
+import { useRouter } from '#app'
 import mqtt from 'mqtt'
 import { 
   Thermometer, 
@@ -213,8 +230,31 @@ import {
   Clock,
   LineChart,
   LogOut,
-  Power
+  Power,
+  Timer,
+  Fan,
+  Lightbulb
 } from 'lucide-vue-next'
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
+import 'dayjs/locale/th' // Import Thai locale
+
+// Custom icons mapping
+const deviceIcons = {
+  fan: Fan,
+  light: Lightbulb
+}
+
+// Setup dayjs plugins
+dayjs.extend(utc)
+dayjs.extend(timezone)
+dayjs.locale('th') // Set Thai locale
+dayjs.tz.setDefault('Asia/Bangkok') // Set default timezone to Thailand
+
+function getCurrentThaiTime() {
+  return dayjs().tz('Asia/Bangkok')
+}
 
 definePageMeta({
   middleware: 'auth',
@@ -235,12 +275,58 @@ const sensorData = ref({
   history: [] as any[]
 })
 
-// Devices state
+// Devices state with timer functionality
 const devices = ref([
-  { isActive: true, lastUpdate: '2 min ago' },
-  { isActive: true, lastUpdate: '2 min ago' },
-  { isActive: true, lastUpdate: '2 min ago' },
-  { isActive: true, lastUpdate: '2 min ago' }
+  {
+    index: 0,
+    name: "ปั๊มน้ำ",
+    isActive: false, 
+    lastUpdate: getCurrentThaiTime(),
+    timer: {
+      active: false,
+      duration: 10,
+      remaining: 0
+    },
+    showTimerModal: false
+  },
+  { 
+    index: 1,
+    name: "ไฟ LED",
+    icon: deviceIcons.light,
+    isActive: false, 
+    lastUpdate: getCurrentThaiTime(),
+    timer: {
+      active: false,
+      duration: 10,
+      remaining: 0
+    },
+    showTimerModal: false
+  },
+  { 
+    index: 2,
+    name: "พัดลมดูดอากาศ",
+    icon: deviceIcons.fan,
+    isActive: false, 
+    lastUpdate: getCurrentThaiTime(),
+    timer: {
+      active: false,
+      duration: 10,
+      remaining: 0
+    },
+    showTimerModal: false
+  },
+  { 
+    index: 3,
+    name: "เครื่องพ่นละอองน้ำ",
+    isActive: false, 
+    lastUpdate: getCurrentThaiTime(),
+    timer: {
+      active: false,
+      duration: 10,
+      remaining: 0
+    },
+    showTimerModal: false
+  }
 ])
 
 // Computed properties for status messages
@@ -285,6 +371,41 @@ const chartData = computed(() => {
     ]
   }
 })
+
+// Timer functions
+function formatTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+function showTimerModal(index: number) {
+  devices.value[index].showTimerModal = true
+}
+
+function startTimer(index: number) {
+  const device = devices.value[index]
+  device.showTimerModal = false
+  device.timer.active = true
+  device.timer.remaining = device.timer.duration * 60
+
+  if (!device.isActive) {
+    toggleDevice(index)
+  }
+
+  // Start countdown
+  const interval = setInterval(() => {
+    if (device.timer.remaining > 0) {
+      device.timer.remaining--
+    } else {
+      clearInterval(interval)
+      device.timer.active = false
+      if (device.isActive) {
+        toggleDevice(index)
+      }
+    }
+  }, 1000)
+}
 
 // MQTT setup
 function setupMQTT() {
@@ -378,15 +499,27 @@ function updateDeviceStatus(topic: string, payload: any) {
   }
 }
 
+// Modified toggleDevice function
 function toggleDevice(index: number) {
-  devices.value[index].isActive = !devices.value[index].isActive
-  devices.value[index].lastUpdate = 'Just now'
+  const device = devices.value[index]
+  device.isActive = !device.isActive
+  device.lastUpdate = getCurrentThaiTime()
+  
+  // Clear timer if device is turned off manually
+  if (!device.isActive && device.timer.active) {
+    device.timer.active = false
+    device.timer.remaining = 0
+  }
   
   // Publish device state change
   if (mqttClient.value && mqttConnected.value) {
     mqttClient.value.publish(
       `hydroponics/devices/${index + 1}/control`,
-      JSON.stringify({ active: devices.value[index].isActive })
+      JSON.stringify({ 
+        active: device.isActive,
+        timerActive: device.timer.active,
+        timeRemaining: device.timer.remaining
+      })
     )
   }
 }
